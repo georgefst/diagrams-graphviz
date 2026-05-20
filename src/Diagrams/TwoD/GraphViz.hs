@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-x-partial -Wno-unrecognised-warning-flags #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
