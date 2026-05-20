@@ -1,0 +1,6 @@
+indentation: 2
+indent-wheres: true
+haddock-style: single-line
+fixities:
+  - infixl 1 &
+  - infixr 4 .~
