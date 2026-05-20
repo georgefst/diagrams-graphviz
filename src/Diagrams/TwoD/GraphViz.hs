@@ -160,16 +160,15 @@ mkGraph vs es = G.mkGraph vpairs edges
 -- but exported since it may also be useful for more fine-grained
 -- control over graph drawing.
 getGraph ::
-  (Ord v) =>
   Gr (AttributeNode v) (AttributeEdge e) ->
-  (M.Map v (P2 Double, V2 Double), [(v, v, e, Path V2 Double)])
+  (M.Map G.Node (v, P2 Double, V2 Double), [((v, G.Node), (v, G.Node), e, Path V2 Double)])
 getGraph gr = (vmap, edges)
   where
     nodes = G.labNodes gr
     vmap =
       M.fromList
-        [ (v, (maybe 0 pointToP2 pos, (* pointsPerInch) <$> dims))
-        | (_, (attrs, v)) <- nodes
+        [ (n, (v, maybe 0 pointToP2 pos, (* pointsPerInch) <$> dims))
+        | (n, (attrs, v)) <- nodes
         , let ExtractedNodeAttrs{pos, width, height} =
                 foldl
                   ( \as -> \case
@@ -187,7 +186,7 @@ getGraph gr = (vmap, edges)
         ]
     ixmap = M.fromList [(i, v) | (i, (_, v)) <- nodes]
     edges =
-      [ (fromJust $ M.lookup i ixmap, fromJust $ M.lookup j ixmap, e, getPath attrs)
+      [ ((fromJust $ M.lookup i ixmap, i), (fromJust $ M.lookup j ixmap, j), e, getPath attrs)
       | (i, j, (attrs, e)) <- G.labEdges gr
       ]
     getPath attrs = case [ss | Pos (SplinePos ss) <- attrs] of
@@ -228,7 +227,7 @@ pointToP2 G.Point{xCoord = x, yCoord = y} = x ^& y
 -- Note that, by default, edges are drawn on top of vertices.  To
 -- control the placement order, use 'drawGraph''.
 drawGraph ::
-  (Ord v, Semigroup m) =>
+  (Semigroup m) =>
   (v -> P2 Double -> V2 Double -> QDiagram b V2 Double m) ->
   (v -> P2 Double -> v -> P2 Double -> e -> Path V2 Double -> QDiagram b V2 Double m) ->
   Gr (AttributeNode v) (AttributeEdge e) ->
@@ -243,7 +242,7 @@ data GraphLayering = EdgesOnTop | VerticesOnTop
 -- | The same as 'drawGraph', but with an extra parameter allowing you
 -- to specify whether vertices or edges should be drawn on top.
 drawGraph' ::
-  (Ord v, Semigroup m) =>
+  (Semigroup m) =>
   GraphLayering ->
   (v -> P2 Double -> V2 Double -> QDiagram b V2 Double m) ->
   (v -> P2 Double -> v -> P2 Double -> e -> Path V2 Double -> QDiagram b V2 Double m) ->
@@ -256,12 +255,13 @@ drawGraph' gl drawV drawE gr =
   where
     components =
       [ mconcat (map drawE' edges)
-      , mconcat (map drawV' (M.assocs vmap))
+      , mconcat (map drawV' (M.elems vmap))
       ]
     (vmap, edges) = getGraph gr
-    drawE' (v1, v2, e, p) =
-      drawE v1 (fst . fromJust $ M.lookup v1 vmap) v2 (fst . fromJust $ M.lookup v2 vmap) e p
-    drawV' (v, (p, s)) = drawV v p s
+    drawE' ((v1, n1), (v2, n2), e, p) =
+      drawE v1 (snd3 . fromJust $ M.lookup n1 vmap) v2 (snd3 . fromJust $ M.lookup n2 vmap) e p
+    drawV' (v, p, s) = drawV v p s
+    snd3 (_, v, _) = v
 
 -- | Round-trip a graph through an external graphviz layout algorithm, and
 -- read back in a version annotated with explicit positioning
