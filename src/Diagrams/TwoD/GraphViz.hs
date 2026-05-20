@@ -5,10 +5,6 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# OPTIONS_GHC -Wno-x-partial -Wno-unrecognised-warning-flags #-}
 
------------------------------------------------------------------------------
-
------------------------------------------------------------------------------
-
 -- |
 -- Module      :  Diagrams.TwoD.GraphViz
 -- Copyright   :  (c) 2014, 2015 Brent Yorgey
@@ -144,7 +140,7 @@ import Data.Maybe (catMaybes, fromJust)
 import Data.Tuple (swap)
 
 -- | Construct a graph from a list of vertex labels (which must be unique) and
---   a list of (directed) edges.  The result is suitable as input to 'layoutGraph'.
+-- a list of (directed) edges.  The result is suitable as input to 'layoutGraph'.
 mkGraph :: (Ord v) => [v] -> [(v, v, e)] -> Gr v e
 mkGraph vs es = G.mkGraph vpairs edges
   where
@@ -154,10 +150,10 @@ mkGraph vs es = G.mkGraph vpairs edges
     mkEdge (v1, v2, e) = (,,) <$> M.lookup v1 vmap <*> M.lookup v2 vmap <*> pure e
 
 -- | Decompose an annotated, concretely laid-out graph into a map from vertex labels to
---   points and a collection of edges associating vertex and edge
---   labels to 'Path' values.  This is used internally by 'drawGraph',
---   but exported since it may also be useful for more fine-grained
---   control over graph drawing.
+-- points and a collection of edges associating vertex and edge
+-- labels to 'Path' values.  This is used internally by 'drawGraph',
+-- but exported since it may also be useful for more fine-grained
+-- control over graph drawing.
 getGraph ::
   (Ord v) =>
   Gr (AttributeNode v) (AttributeEdge e) ->
@@ -174,7 +170,7 @@ getGraph gr = (vmap, edges)
     getPath attrs = case [ss | Pos (SplinePos ss) <- attrs] of
       [splines] -> mconcat . map getSpline $ splines
       _ -> mempty
-    getSpline (Spline{splinePoints = pt1 : pts}) = thePath
+    getSpline Spline{splinePoints = pt1 : pts} = thePath
       where
         ptGroups = chunksOf 3 (map pointToP2 pts)
         fixedBeziers = zipWith mkBez (pointToP2 pt1 : map last ptGroups) ptGroups
@@ -187,17 +183,17 @@ getGraph gr = (vmap, edges)
 
 -- | Convert a GraphViz point to a diagrams point.
 pointToP2 :: G.Point -> P2 Double
-pointToP2 (G.Point{xCoord = x, yCoord = y}) = x ^& y
+pointToP2 G.Point{xCoord = x, yCoord = y} = x ^& y
 
 -- | Render an annotated graph as a diagram, given functions
---   controlling the drawing of vertices and of edges.  The first
---   function is given the label and location of each vertex. The
---   second function, for each edge, is given the label and location
---   of the first vertex, the label and location of the second vertex,
---   and the label and path corresponding to the edge.
+-- controlling the drawing of vertices and of edges.  The first
+-- function is given the label and location of each vertex. The
+-- second function, for each edge, is given the label and location
+-- of the first vertex, the label and location of the second vertex,
+-- and the label and path corresponding to the edge.
 --
---   Note that, by default, edges are drawn on top of vertices.  To
---   control the placement order, use 'drawGraph''.
+-- Note that, by default, edges are drawn on top of vertices.  To
+-- control the placement order, use 'drawGraph''.
 drawGraph ::
   (Ord v, Semigroup m) =>
   (v -> P2 Double -> QDiagram b V2 Double m) ->
@@ -207,12 +203,12 @@ drawGraph ::
 drawGraph = drawGraph' EdgesOnTop
 
 -- | A data type for specifying whether edges should be drawn on top
---   of vertices or vice versa.
+-- of vertices or vice versa.
 data GraphLayering = EdgesOnTop | VerticesOnTop
   deriving (Show, Read, Eq, Ord)
 
 -- | The same as 'drawGraph', but with an extra parameter allowing you
---   to specify whether vertices or edges should be drawn on top.
+-- to specify whether vertices or edges should be drawn on top.
 drawGraph' ::
   (Ord v, Semigroup m) =>
   GraphLayering ->
@@ -234,12 +230,12 @@ drawGraph' gl drawV drawE gr =
       drawE v1 (fromJust $ M.lookup v1 vmap) v2 (fromJust $ M.lookup v2 vmap) e p
 
 -- | Round-trip a graph through an external graphviz layout algorithm, and
---   read back in a version annotated with explicit positioning
---   information.  The result is suitable for input to 'drawGraph' or,
---   more directly, to 'getGraph'.  The 'GraphvizCommand' should be
---   something like @Dot@ or @Neato@; to access them you should import
---   "Data.GraphViz.Command".  For more control over the functioning
---   of graphviz, see 'layoutGraph''.
+-- read back in a version annotated with explicit positioning
+-- information.  The result is suitable for input to 'drawGraph' or,
+-- more directly, to 'getGraph'.  The 'GraphvizCommand' should be
+-- something like @Dot@ or @Neato@; to access them you should import
+-- "Data.GraphViz.Command".  For more control over the functioning
+-- of graphviz, see 'layoutGraph''.
 layoutGraph ::
   forall gr v e.
   (G.Graph gr) =>
@@ -249,9 +245,9 @@ layoutGraph ::
 layoutGraph = layoutGraph' (defaultDiaParams :: GraphvizParams G.Node v e () v)
 
 -- | Like 'layoutGraph', but with an extra 'GraphvizParams' parameter
---   controlling various aspects of the graphviz layout process.  See
---   'defaultDiaParams', and the "Data.GraphViz.Attributes" and
---   "Data.GraphViz.Attributes.Complete" modules.
+-- controlling various aspects of the graphviz layout process.  See
+-- 'defaultDiaParams', and the "Data.GraphViz.Attributes" and
+-- "Data.GraphViz.Attributes.Complete" modules.
 layoutGraph' ::
   (Ord cl, G.Graph gr) =>
   GraphvizParams G.Node v e cl l ->
@@ -265,9 +261,9 @@ layoutGraph' params com gr = dotAttributes' com (isDirected params) gr' asDot
     gr' = addEdgeIDs gr
 
 -- | Some convenient parameters for GraphViz which work better for
---   diagrams than the default.  In particular, use circular nodes
---   (instead of the default ovals), and allow cubic splines for
---   edges.
+-- diagrams than the default.  In particular, use circular nodes
+-- (instead of the default ovals), and allow cubic splines for
+-- edges.
 defaultDiaParams :: GraphvizParams G.Node v e cl v
 defaultDiaParams =
   defaultParams
@@ -293,7 +289,7 @@ dotAttributes' command _isDir gr asDot =
     parseDG = (`asTypeOf` asDot) . fromGeneralised
 
 -- | Just draw the nodes of the graph as circles and the edges as
---   arrows between them.
+-- arrows between them.
 simpleGraphDiagram ::
   (Ord v, Renderable (Path V2 Double) b) =>
   GraphvizCommand -> Gr v e -> IO (QDiagram b V2 Double Any)
