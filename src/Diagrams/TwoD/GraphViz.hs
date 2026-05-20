@@ -1,7 +1,11 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# OPTIONS_GHC -Wno-x-partial -Wno-unrecognised-warning-flags #-}
 
@@ -55,7 +59,7 @@
 -- >   hex' <- layoutGraph Dot hex
 -- >   let hexDrawing :: Diagram B
 -- >       hexDrawing = drawGraph
--- >                      (const $ place (circle 19))
+-- >                      (\_ p _ -> place (circle 19) p)
 -- >                      (\_ p1 _ p2 _ p -> arrowBetween' (opts p) p1 p2)
 -- >                      hex'
 -- >       opts p = with & gaps .~ 16 & arrowShaft .~ (unLoc . head $ pathTrails p)
@@ -63,7 +67,8 @@
 --
 -- There are a few quirks to note.
 --
---   * GraphViz seems to assume the circular nodes have radius 19.
+--   * GraphViz node positions are in points (72 per inch), so any
+--     values in the input Graphviz attributes need to reflect this.
 --
 --   * Note how we draw an arrow for each edge, and use the path
 --     computed by GraphViz (which might be curved) to specify the shaft
@@ -89,7 +94,7 @@
 -- >   hex' <- layoutGraph' params Dot hex
 -- >   let hexDrawing :: Diagram B
 -- >       hexDrawing = drawGraph
--- >                      (const $ place (circle 19))
+-- >                      (\_ p _ -> place (circle 19) p)
 -- >                      (\_ _ _ _ _ p -> stroke p)
 -- >                      hex'
 -- >   mainWith $ hexDrawing # frame 1
@@ -123,7 +128,7 @@ import qualified Data.Graph.Inductive.Graph as G (
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.GraphViz hiding (Path, attrs)
 import Data.GraphViz.Attributes.Complete as G (
-  Attribute (Overlap, Pos, Splines),
+  Attribute (Height, Overlap, Pos, Splines, Width),
   EdgeType (SplineEdges),
   Overlap (ScaleOverlaps),
   Point (..),
@@ -136,7 +141,7 @@ import Data.GraphViz.Types.Generalised (FromGeneralisedDot (..))
 import Data.List (group, sort)
 import Data.List.Split (chunksOf)
 import qualified Data.Map as M
-import Data.Maybe (catMaybes, fromJust)
+import Data.Maybe (catMaybes, fromJust, fromMaybe)
 import Data.Tuple (swap)
 
 -- | Construct a graph from a list of vertex labels (which must be unique) and
@@ -157,11 +162,29 @@ mkGraph vs es = G.mkGraph vpairs edges
 getGraph ::
   (Ord v) =>
   Gr (AttributeNode v) (AttributeEdge e) ->
-  (M.Map v (P2 Double), [(v, v, e, Path V2 Double)])
+  (M.Map v (P2 Double, V2 Double), [(v, v, e, Path V2 Double)])
 getGraph gr = (vmap, edges)
   where
     nodes = G.labNodes gr
-    vmap = M.fromList [(v, pointToP2 pt) | (_, (attrs, v)) <- nodes, Pos (PointPos pt) <- attrs]
+    vmap =
+      M.fromList
+        [ (v, (maybe 0 pointToP2 pos, (* pointsPerInch) <$> dims))
+        | (_, (attrs, v)) <- nodes
+        , let ExtractedNodeAttrs{pos, width, height} =
+                foldl
+                  ( \as -> \case
+                      Pos (PointPos pt) -> as{pos = Just pt}
+                      Width w -> as{width = Just w}
+                      Height h -> as{height = Just h}
+                      _ -> as
+                  )
+                  (ExtractedNodeAttrs Nothing Nothing Nothing)
+                  attrs
+        , let dims =
+                V2
+                  (fromMaybe defaultWidth width)
+                  (fromMaybe defaultHeight height)
+        ]
     ixmap = M.fromList [(i, v) | (i, (_, v)) <- nodes]
     edges =
       [ (fromJust $ M.lookup i ixmap, fromJust $ M.lookup j ixmap, e, getPath attrs)
@@ -180,6 +203,16 @@ getGraph gr = (vmap, edges)
         fixup [] = [] `at` origin
         fixup (b1 : rest) = (unLoc b1 : map unLoc rest) `at` loc b1
     getSpline _ = error "Diagrams.TwoD.GraphViz.getGraph: don't know what to do with empty spline!"
+    -- GraphViz constants (can these be overridden?)
+    defaultWidth = 0.75
+    defaultHeight = 0.5
+    pointsPerInch = 72
+
+data ExtractedNodeAttrs = ExtractedNodeAttrs
+  { pos :: Maybe G.Point
+  , width :: Maybe Double
+  , height :: Maybe Double
+  }
 
 -- | Convert a GraphViz point to a diagrams point.
 pointToP2 :: G.Point -> P2 Double
@@ -187,7 +220,7 @@ pointToP2 G.Point{xCoord = x, yCoord = y} = x ^& y
 
 -- | Render an annotated graph as a diagram, given functions
 -- controlling the drawing of vertices and of edges.  The first
--- function is given the label and location of each vertex. The
+-- function is given the label, location and dimensions of each vertex. The
 -- second function, for each edge, is given the label and location
 -- of the first vertex, the label and location of the second vertex,
 -- and the label and path corresponding to the edge.
@@ -196,7 +229,7 @@ pointToP2 G.Point{xCoord = x, yCoord = y} = x ^& y
 -- control the placement order, use 'drawGraph''.
 drawGraph ::
   (Ord v, Semigroup m) =>
-  (v -> P2 Double -> QDiagram b V2 Double m) ->
+  (v -> P2 Double -> V2 Double -> QDiagram b V2 Double m) ->
   (v -> P2 Double -> v -> P2 Double -> e -> Path V2 Double -> QDiagram b V2 Double m) ->
   Gr (AttributeNode v) (AttributeEdge e) ->
   QDiagram b V2 Double m
@@ -212,7 +245,7 @@ data GraphLayering = EdgesOnTop | VerticesOnTop
 drawGraph' ::
   (Ord v, Semigroup m) =>
   GraphLayering ->
-  (v -> P2 Double -> QDiagram b V2 Double m) ->
+  (v -> P2 Double -> V2 Double -> QDiagram b V2 Double m) ->
   (v -> P2 Double -> v -> P2 Double -> e -> Path V2 Double -> QDiagram b V2 Double m) ->
   Gr (AttributeNode v) (AttributeEdge e) ->
   QDiagram b V2 Double m
@@ -223,11 +256,12 @@ drawGraph' gl drawV drawE gr =
   where
     components =
       [ mconcat (map drawE' edges)
-      , mconcat (map (uncurry drawV) (M.assocs vmap))
+      , mconcat (map drawV' (M.assocs vmap))
       ]
     (vmap, edges) = getGraph gr
     drawE' (v1, v2, e, p) =
-      drawE v1 (fromJust $ M.lookup v1 vmap) v2 (fromJust $ M.lookup v2 vmap) e p
+      drawE v1 (fst . fromJust $ M.lookup v1 vmap) v2 (fst . fromJust $ M.lookup v2 vmap) e p
+    drawV' (v, (p, s)) = drawV v p s
 
 -- | Round-trip a graph through an external graphviz layout algorithm, and
 -- read back in a version annotated with explicit positioning
@@ -309,7 +343,7 @@ simpleGraphDiagram layoutCmd gr = do
       nodeRadius = minimum edgeLengths / 4
       drawing =
         drawGraph
-          (const $ place (circle nodeRadius))
+          (\_ p _ -> place (circle nodeRadius) p)
           (\_ p₁ _ p₂ _ p -> arrowBetween' (opts p) p₁ p₂)
           gr'
       opts p =
