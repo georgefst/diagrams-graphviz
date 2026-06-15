@@ -142,6 +142,8 @@ import Data.List (group, sort)
 import Data.List.Split (chunksOf)
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromJust, fromMaybe)
+import Data.Text.Encoding (decodeUtf8')
+import qualified Data.Text.Lazy as TL
 import Data.Tuple (swap)
 
 -- | Construct a graph from a list of vertex labels (which must be unique) and
@@ -318,7 +320,8 @@ dotAttributes' ::
   dg G.Node ->
   IO (gr (AttributeNode v) (AttributeEdge e))
 dotAttributes' command _isDir gr asDot =
-  augmentGraph gr . parseDG <$> graphvizWithHandle command asDot DotOutput hGetDot
+  augmentGraph gr . parseDG . parseDotGraph . either (error "invalid UTF-8 from Graphviz") TL.fromStrict . decodeUtf8'
+    <$> graphviz command asDot DotOutput
   where
     parseDG = (`asTypeOf` asDot) . fromGeneralised
 
